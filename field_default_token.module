@@ -1,9 +1,92 @@
 <?php
 
 /**
+ * Implements image_field_update_instance().
+ */
+function field_default_token_field_update_instance($instance, $prior_instance) {
+  $has_tokens = FALSE;
+  if (!empty($instance['default_value'])) {
+    foreach ($instance['default_value'] as $values) {
+      foreach ($values as $value) {
+        if (!is_array($value)) {
+          if (strpos($value, '[') !== FALSE) {
+            $has_tokens = TRUE;
+          }
+        }
+        else {
+          foreach ($value as $column_value) {
+            if (strpos($column_value, '[') !== FALSE) {
+              $has_tokens = TRUE;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  $update = FALSE;
+
+  if (empty($instance['default_value_function'])) {
+    if ($has_tokens) {
+      $instance['default_value_function'] = 'field_default_token_default_value_function';
+      $update = TRUE;
+    }
+  }
+  else if ($instance['default_value_function'] == 'field_default_token_default_value_function') {
+    if (!$has_tokens) {
+      unset($instance['default_value_function']);
+      $update = TRUE;
+    }
+  }
+
+  if ($update) {
+    // Resave the instance and reclear caches.
+    _field_write_instance($instance, TRUE);
+    field_cache_clear();
+  }
+}
+
+/**
+ * Function for token replacementment of default values.
+ */
+function field_default_token_default_value_function($entity_type, $entity, $field, $instance, $langcode) {
+  $token_type = $entity_type;
+  $entity_info = entity_get_info($entity_type);
+  if (isset($entity_info['token type'])) {
+    $token_type = $entity_info['token type'];
+  }
+  $data = array(
+    $token_type => $entity,
+  );
+
+  $items = $instance['default_value'];
+  foreach ($items as &$item) {
+    if (!is_array($item)) {
+      $item = token_replace($item, $data, array('clear' => TRUE));
+    }
+    else {
+      foreach ($item as $column_name => $column_value) {
+        $item[$column_name] = token_replace($column_value, $data, array('clear' => TRUE));
+      }
+    }
+  }
+  return $items;
+}
+
+/**
  * Implements hook_form_FORM_ID_alter().
  */
 function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_id) {
+  if (!isset($form['instance']['default_value_widget'])) {
+    $field = $form['#field'];
+    $instance = $form['#instance'];
+    if ((field_behaviors_widget('default value', $instance) == FIELD_BEHAVIOR_DEFAULT)
+        && (!empty($instance['default_value_function'])) && ($instance['default_value_function'] === 'field_default_token_default_value_function')) {
+      //Readd default value widget hidden by core.
+      $form['instance']['default_value_widget'] = field_ui_default_value_widget($field, $instance, $form, $form_state);
+    }
+  }
+
   if ((isset($form['#instance']['widget']['type'])) && ($form['#instance']['widget']['type'] == 'options_select')) {
     $default_value = '';
     if (!empty($form['#instance']['default_value'])) {
@@ -49,9 +132,6 @@ function field_default_token_field_widget_form_alter(&$element, &$form_state, $c
     if (empty($element['#entity'])) {
       field_default_token_modify_field_ui_form($element, $form_state, $context);
     }
-    else {
-      field_default_token_modify_entity_form($element, $form_state, $context);
-    }
   }
 }
 
@@ -61,56 +141,6 @@ function field_default_token_field_widget_form_alter(&$element, &$form_state, $c
 function field_default_token_modify_field_ui_form(&$element, &$form_state, $context) {
   if (isset($element['#options'])) { // Selector, checkboxes, radio buttons.
     $element['#value_callback'] = 'field_default_token_selection_element_value';
-  }
-}
-
-/**
- * Modify part of entity form containing the field.
- */
-function field_default_token_modify_entity_form(&$element, &$form_state, $context) {
-  $token_type = $element['#entity_type'];
-  $entity_info = entity_get_info($element['#entity_type']);
-  if (isset($entity_info['token type'])) {
-    $token_type = $entity_info['token type'];
-  }
-
-  $data = array(
-    $token_type => $element['#entity'],
-  );
-
-  // @todo Support 'checkboxes' and 'radios' widget types.
-  if ((isset($element['#type'])) && ($element['#type'] == 'select') && (empty($element['#default_value']))) {
-    // Restore default value from instance settings.
-    if (!empty($context['instance']['default_value'])) {
-      foreach ($context['instance']['default_value'] as $values) {
-        foreach ($values as $value) {
-          if (strpos($value, '[') !== FALSE) {
-            $element['#default_value'] = array($value);
-          }
-        }
-      }
-    }
-  }
-
-  // In the body field, the default value is stored in $element['#default_value'].
-  if ((isset($element['#default_value'])) && (!is_array($element['#default_value'])) && (strpos($element['#default_value'], '[') !== FALSE)) {
-    $element['#default_value'] = token_replace($element['#default_value'], $data, array('clear' => TRUE));
-  }
-  // In the link field, the default value is stored in $element['#default_value']['url'].
-  elseif ((isset($element['#default_value'])) && (is_array($element['#default_value']))) {
-    foreach ($element['#default_value'] as $key => $value) {
-      if ((is_string($value)) && (strpos($value, '[') !== FALSE)) {
-        $element['#default_value'][$key] = token_replace($value, $data, array('clear' => TRUE));
-      }
-    }
-  }
-  // In the text field, the default value is stored in $element['value']['#default_value'].
-  else {
-    foreach ($element['#columns'] as $column) {
-      if ((isset($element[$column]['#default_value'])) && (strpos($element[$column]['#default_value'], '[') !== FALSE)) {
-        $element[$column]['#default_value'] = token_replace($element[$column]['#default_value'], $data, array('clear' => TRUE));
-      }
-    }
   }
 }
 
