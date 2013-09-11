@@ -11,16 +11,23 @@ function field_default_token_update_7000() {
         $has_tokens = FALSE;
         if (!empty($instance['default_value'])) {
           foreach ($instance['default_value'] as $values) {
-            foreach ($values as $value) {
-              if (!is_array($value)) {
-                if (strpos($value, '[') !== FALSE) {
-                  $has_tokens = TRUE;
-                }
+            if (!is_array($values)) {
+              if (strpos($values, '[') !== FALSE) {
+                $has_tokens = TRUE;
               }
-              else {
-                foreach ($value as $column_value) {
-                  if (strpos($column_value, '[') !== FALSE) {
+            }
+            else {
+              foreach ($values as $value) {
+                if (!is_array($value)) {
+                  if (strpos($value, '[') !== FALSE) {
                     $has_tokens = TRUE;
+                  }
+                }
+                else {
+                  foreach ($value as $column_value) {
+                    if (strpos($column_value, '[') !== FALSE) {
+                      $has_tokens = TRUE;
+                    }
                   }
                 }
               }
