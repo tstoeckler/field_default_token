@@ -117,6 +117,13 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
 
   if (isset($form['instance']['default_value_widget'])) {
     field_default_token_enlarge_max_length($form['instance']['default_value_widget']);
+
+    $form['instance']['default_value_widget']['token_tree'] = array(
+      '#theme' => 'token_tree',
+      '#token_types' => array($instance['entity_type']),
+      '#dialog' => TRUE,
+      '#weight' => 100,
+    );
   }
 
   // Replace validator to disable validation of strings with tokens
