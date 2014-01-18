@@ -1,6 +1,11 @@
 <?php
 
 /**
+ * @file
+ * Install, update and uninstall functions for the field_default_token module.
+ */
+
+/**
  * Update field instances which use tokens as default value.
  */
 function field_default_token_update_7000() {

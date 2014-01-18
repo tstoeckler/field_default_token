@@ -1,7 +1,12 @@
 <?php
 
 /**
- * Implements image_field_update_instance().
+ * @file
+ * Enables to use tokens as field default values.
+ */
+
+/**
+ * Implements hook_field_update_instance().
  */
 function field_default_token_field_update_instance($instance, $prior_instance) {
   $has_tokens = FALSE;
@@ -32,7 +37,7 @@ function field_default_token_field_update_instance($instance, $prior_instance) {
       $update = TRUE;
     }
   }
-  else if ($instance['default_value_function'] == 'field_default_token_default_value_function') {
+  elseif ($instance['default_value_function'] == 'field_default_token_default_value_function') {
     if (!$has_tokens) {
       unset($instance['default_value_function']);
       $update = TRUE;
@@ -40,14 +45,15 @@ function field_default_token_field_update_instance($instance, $prior_instance) {
   }
 
   if ($update) {
-    // Resave the instance and reclear caches.
+    // Save the instance and clear caches again without hook invoking.
+    // @see field_update_instance()
     _field_write_instance($instance, TRUE);
     field_cache_clear();
   }
 }
 
 /**
- * Function for token replacementment of default values.
+ * Function for token replacement of default values.
  */
 function field_default_token_default_value_function($entity_type, $entity, $field, $instance, $langcode) {
   $token_type = $entity_type;
@@ -82,7 +88,7 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
     $instance = $form['#instance'];
     if ((field_behaviors_widget('default value', $instance) == FIELD_BEHAVIOR_DEFAULT)
         && (!empty($instance['default_value_function'])) && ($instance['default_value_function'] === 'field_default_token_default_value_function')) {
-      //Readd default value widget hidden by core.
+      // Read default value widget hidden by core.
       $form['instance']['default_value_widget'] = field_ui_default_value_widget($field, $instance, $form, $form_state);
     }
   }
@@ -136,10 +142,11 @@ function field_default_token_field_widget_form_alter(&$element, &$form_state, $c
 }
 
 /**
- * Modify Field UI form.
+ * Modifies Field UI form.
  */
 function field_default_token_modify_field_ui_form(&$element, &$form_state, $context) {
-  if (isset($element['#options'])) { // Selector, checkboxes, radio buttons.
+  // Selector, checkboxes, radio buttons.
+  if (isset($element['#options'])) {
     $element['#value_callback'] = 'field_default_token_selection_element_value';
   }
 }
