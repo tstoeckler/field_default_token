@@ -120,9 +120,9 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
 
     $form['instance']['default_value_widget']['token_tree'] = array(
       '#theme' => 'token_tree',
-      '#token_types' => array($instance['entity_type']),
+      '#token_types' => array($form['#instance']['entity_type']),
       '#dialog' => TRUE,
-      '#weight' => 100,
+      '#weight' => 200,
     );
   }
 
@@ -142,7 +142,8 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
  *   Root form element.
  */
 function field_default_token_enlarge_max_length(&$element) {
-  if (isset($element['#type']) && ($element['#type'] === 'textfield')) {
+  if ((isset($element['#type']) && ($element['#type'] === 'textfield'))
+      || (isset($element['#base_type']) && ($element['#base_type'] === 'textfield'))) {
     if (!isset($element['#maxlength']) || ($element['#maxlength'] < 1024)) {
       $element['#maxlength'] = 1024;
     }
