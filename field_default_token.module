@@ -94,8 +94,11 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
     }
   }
 
-  if ((isset($form['#instance']['widget']['type'])) && ($form['#instance']['widget']['type'] == 'options_select')) {
+  $options_widgets = array('options_select', 'options_buttons', 'options_onoff');
+
+  if ((isset($form['#instance']['widget']['type'])) && (in_array($form['#instance']['widget']['type'], $options_widgets))) {
     $default_value = '';
+
     if (!empty($form['#instance']['default_value'])) {
       foreach ($form['#instance']['default_value'] as $values) {
         foreach ($values as $value) {
@@ -105,6 +108,7 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
         }
       }
     }
+
     $form['instance']['default_value_widget']['default_value_token'] = array(
       '#type' => 'textfield',
       '#title' => t('Token for default value'),
@@ -196,6 +200,7 @@ function field_default_token_selection_element_value(&$element, $input, $form_st
     // Disable validation on Field UI forms.
     $element['#after_build'][] = 'field_default_token_remove_validation';
     $token = $form_state['input']['default_value_token'];
+
     if ($input !== FALSE) {
       if (isset($element['#multiple']) && $element['#multiple']) {
         $input = array($token);
@@ -205,6 +210,7 @@ function field_default_token_selection_element_value(&$element, $input, $form_st
       }
     }
   }
+
   return form_type_select_value($element, $input);
 }
 
