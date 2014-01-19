@@ -65,14 +65,23 @@ function field_default_token_default_value_function($entity_type, $entity, $fiel
     $token_type => $entity,
   );
 
+  $token_is_label = (isset($field['settings']['allowed_values']) && (is_array($field['settings']['allowed_values']))
+    && (!empty($instance['default_value_label_token'])));
+
   $items = $instance['default_value'];
   foreach ($items as &$item) {
     if (!is_array($item)) {
       $item = token_replace($item, $data, array('clear' => TRUE));
+      if ($token_is_label) {
+        $item = array_search($item, $field['settings']['allowed_values']);
+      }
     }
     else {
       foreach ($item as $column_name => $column_value) {
         $item[$column_name] = token_replace($column_value, $data, array('clear' => TRUE));
+        if ($token_is_label) {
+          $item[$column_name] = array_search($item[$column_name], $field['settings']['allowed_values']);
+        }
       }
     }
   }
@@ -83,9 +92,10 @@ function field_default_token_default_value_function($entity_type, $entity, $fiel
  * Implements hook_form_FORM_ID_alter().
  */
 function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_id) {
+  $field = $form['#field'];
+  $instance = $form['#instance'];
+
   if (!isset($form['instance']['default_value_widget'])) {
-    $field = $form['#field'];
-    $instance = $form['#instance'];
     if ((field_behaviors_widget('default value', $instance) == FIELD_BEHAVIOR_DEFAULT)
         && (!empty($instance['default_value_function']))
         && ($instance['default_value_function'] === 'field_default_token_default_value_function')) {
@@ -96,11 +106,11 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
 
   $options_widgets = array('options_select', 'options_buttons', 'options_onoff');
 
-  if ((isset($form['#instance']['widget']['type'])) && (in_array($form['#instance']['widget']['type'], $options_widgets))) {
+  if ((isset($instance['widget']['type'])) && (in_array($instance['widget']['type'], $options_widgets))) {
     $default_value = '';
 
-    if (!empty($form['#instance']['default_value'])) {
-      foreach ($form['#instance']['default_value'] as $values) {
+    if (!empty($instance['default_value'])) {
+      foreach ($instance['default_value'] as $values) {
         foreach ($values as $value) {
           if (strpos($value, '[') !== FALSE) {
             $default_value = $value;
@@ -122,9 +132,27 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
   if (isset($form['instance']['default_value_widget'])) {
     field_default_token_enlarge_max_length($form['instance']['default_value_widget']);
 
+    // Allow tokens to be field value labels, not just field values.
+    if ((isset($field['settings']['allowed_values'])) && (is_array($field['settings']['allowed_values']))) {
+      $form['instance']['default_value_label_token'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Token for default value contains field value label, not stored key'),
+        '#description' => t('If checked, token value must be field value label from allowed values list of key|label pairs.'),
+        '#default_value' => isset($instance['default_value_label_token']) ? $instance['default_value_label_token'] : FALSE,
+        '#weight' => 150,
+      );
+    }
+
+    $entity_type = $form['#instance']['entity_type'];
+    $token_type = $entity_type;
+    $entity_info = entity_get_info($entity_type);
+    if (isset($entity_info['token type'])) {
+      $token_type = $entity_info['token type'];
+    }
+
     $form['instance']['default_value_widget']['token_tree'] = array(
       '#theme' => 'token_tree',
-      '#token_types' => array($form['#instance']['entity_type']),
+      '#token_types' => array($token_type),
       '#dialog' => TRUE,
       '#weight' => 200,
     );
