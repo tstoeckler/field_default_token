@@ -72,10 +72,9 @@ function field_default_token_default_value_function($entity_type, $entity, $fiel
   if (isset($entity_info['token type'])) {
     $token_type = $entity_info['token type'];
   }
-
-  // Do not try to generate tokens from stub entities.
-  list($entity_id) = entity_extract_ids($entity_type, $entity);
-  $data = !is_null($entity_id) ? array($token_type => $entity) : array();
+  $data = array(
+    $token_type => $entity,
+  );
 
   $token_is_label = (isset($field['settings']['allowed_values']) && (is_array($field['settings']['allowed_values']))
     && (!empty($instance['default_value_label_token'])));
