@@ -151,6 +151,7 @@ function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_
 
   if (isset($form['instance']['default_value_widget'])) {
     field_default_token_enlarge_max_length($form['instance']['default_value_widget']);
+    field_default_token_fix_number_validation($form['instance']['default_value_widget']);
 
     // Allow tokens to be field value labels, not just field values.
     if ((isset($field['settings']['allowed_values'])) && (is_array($field['settings']['allowed_values']))) {
@@ -203,6 +204,27 @@ function field_default_token_enlarge_max_length(&$element) {
   foreach (element_children($element) as $key) {
     if (isset($element[$key]) && $element[$key]) {
       field_default_token_enlarge_max_length($element[$key]);
+    }
+  }
+}
+
+/**
+ * Removes numeric field validation.
+ *
+ * @param array $element
+ *   Root form element.
+ */
+function field_default_token_fix_number_validation(&$element) {
+  if (!empty($element['#element_validate'])) {
+    foreach ($element['#element_validate'] as &$callback) {
+      if ($callback === 'number_field_widget_validate') {
+        $callback = 'field_default_token_number_field_widget_validate';
+      }
+    }
+  }
+  foreach (element_children($element) as $key) {
+    if (isset($element[$key]) && $element[$key]) {
+      field_default_token_fix_number_validation($element[$key]);
     }
   }
 }
@@ -321,4 +343,18 @@ function field_default_token_field_ui_field_edit_form_validate($form, &$form_sta
       field_default_form_errors(NULL, NULL, $field, $instance, LANGUAGE_NONE, $items, $element, $form_state);
     }
   }
+}
+
+/**
+ * Individual number element validation handler for field_ui_field_edit_form.
+ *
+ * Replacement for number_field_widget_validate().
+ */
+function field_default_token_number_field_widget_validate($element, &$form_state) {
+  $value = $element['#value'];
+  if (strpos($value, '[') !== FALSE) {
+    // Token in default value, do not validate.
+    return;
+  }
+  number_field_widget_validate($element, $form_state);
 }
