@@ -80,6 +80,10 @@ function field_default_token_default_value_function($entity_type, $entity, $fiel
   $token_is_label = (isset($field['settings']['allowed_values']) && (is_array($field['settings']['allowed_values']))
     && (!empty($instance['default_value_label_token'])));
 
+  if (empty($instance['default_value'])) {
+    return array();
+  }
+
   $items = $instance['default_value'];
   foreach ($items as &$item) {
     if (!is_array($item)) {
