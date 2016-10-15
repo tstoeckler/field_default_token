@@ -44,6 +44,11 @@ class FieldDefaultTokenTest extends KernelTestBase  {
   protected function setUp() {
     parent::setUp();
     $this->installEntitySchema($this->entityTypeId);
+    FieldStorageConfig::create([
+      'field_name' => $this->fieldName,
+      'entity_type' => $this->entityTypeId,
+      'type' => 'string',
+    ])->save();
 
     /** @var \Drupal\Core\Config\ConfigFactoryInterface $config_factory */
     $config_factory = $this->container->get('config.factory');
@@ -51,28 +56,64 @@ class FieldDefaultTokenTest extends KernelTestBase  {
   }
 
   /**
-   * {@inheritdoc}
+   * Tests that the default value callback is registered for a new field.
    */
-  public function testTokenReplacement() {
-    FieldStorageConfig::create([
-      'field_name' => $this->fieldName,
-      'entity_type' => $this->entityTypeId,
-      'type' => 'string',
-    ])->save();
-    $field = FieldConfig::create([
-      'field_name' => $this->fieldName,
-      'entity_type' => $this->entityTypeId,
-      'bundle' => 'entity_test',
-    ]);
-    $field->setDefaultValue('This is the site name: [site:name]');
-    $field->save();
+  public function testCallbackNewField() {
+    $field = $this->createField();
+    $field->setDefaultValue('This is the site name: [site:name]')->save();
     $this->assertEquals('field_default_token_default_value_callback', $field->getDefaultValueCallback());
+  }
+
+  /**
+   * Tests that the default value callback is registered for an existing field.
+   */
+  public function testCallbackExistingField() {
+    $field = $this->createField();
+    $field->save();
+    $this->assertEquals('', $field->getDefaultValueCallback());
+
+    $field->setDefaultValue('This is the site name: [site:name]')->save();
+    $this->assertEquals('field_default_token_default_value_callback', $field->getDefaultValueCallback());
+  }
+
+  /**
+   * Tests the the default value callback is removed properly.
+   */
+  public function testCallbackRemoval() {
+    $field = $this->createField();
+    $field->setDefaultValue('This is the site name: [site:name]')->save();
+    $this->assertEquals('field_default_token_default_value_callback', $field->getDefaultValueCallback());
+
+    $field->setDefaultValue('There are no tokens to see here, move along')->save();
+    $this->assertNull($field->getDefaultValueCallback());
+  }
+
+  /**
+   * Test that tokens in a field default value get replaced properly.
+   */
+  public function testReplacement() {
+    $field = $this->createField();
+    $field->setDefaultValue('This is the site name: [site:name]')->save();
 
     $entity = EntityTest::create();
     $entity->save();
 
     $expected = [['value' => 'This is the site name: ' . $this->siteName]];
     $this->assertEquals($expected, $field->getDefaultValue($entity));
+  }
+
+  /**
+   * Creates a test field configuration.
+   *
+   * @return \Drupal\field\Entity\FieldConfig
+   *   The field configuration.
+   */
+  protected function createField() {
+    return FieldConfig::create([
+      'field_name' => $this->fieldName,
+      'entity_type' => $this->entityTypeId,
+      'bundle' => 'entity_test',
+    ]);
   }
 
 }
