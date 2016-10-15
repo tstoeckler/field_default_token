@@ -3,14 +3,11 @@
 namespace Drupal\Tests\field_default_token\Kernel;
 
 use Drupal\entity_test\Entity\EntityTest;
-use Drupal\field\Entity\FieldConfig;
-use Drupal\field\Entity\FieldStorageConfig;
-use Drupal\KernelTests\KernelTestBase;
 
 /**
  * Tests that tokens in field default values get replaced correctly.
  */
-class FieldDefaultTokenTest extends KernelTestBase  {
+class FieldDefaultTokenBasicTest extends FieldDefaultTokenKernelTestBase  {
 
   /**
    * The site name of the test site.
@@ -20,35 +17,20 @@ class FieldDefaultTokenTest extends KernelTestBase  {
   protected $siteName;
 
   /**
-   * The ID of the entity type used in the test.
-   *
-   * @var string
+   * {@inheritdoc}
    */
   protected $entityTypeId = 'entity_test';
 
   /**
-   * The name of the field used in the test.
-   *
-   * @var string
-   */
-  protected $fieldName = 'field_default_token_test';
-
-  /**
    * {@inheritdoc}
    */
-  public static $modules = ['entity_test', 'field', 'field_default_token', 'system', 'user'];
+  public static $modules = ['entity_test', 'system', 'user'];
 
   /**
    * {@inheritdoc}
    */
   protected function setUp() {
     parent::setUp();
-    $this->installEntitySchema($this->entityTypeId);
-    FieldStorageConfig::create([
-      'field_name' => $this->fieldName,
-      'entity_type' => $this->entityTypeId,
-      'type' => 'string',
-    ])->save();
 
     /** @var \Drupal\Core\Config\ConfigFactoryInterface $config_factory */
     $config_factory = $this->container->get('config.factory');
@@ -100,20 +82,6 @@ class FieldDefaultTokenTest extends KernelTestBase  {
 
     $expected = [['value' => 'This is the site name: ' . $this->siteName]];
     $this->assertEquals($expected, $field->getDefaultValue($entity));
-  }
-
-  /**
-   * Creates a test field configuration.
-   *
-   * @return \Drupal\field\Entity\FieldConfig
-   *   The field configuration.
-   */
-  protected function createField() {
-    return FieldConfig::create([
-      'field_name' => $this->fieldName,
-      'entity_type' => $this->entityTypeId,
-      'bundle' => 'entity_test',
-    ]);
   }
 
 }
