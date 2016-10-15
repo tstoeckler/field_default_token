@@ -7,6 +7,8 @@ use Drupal\node\Entity\NodeType;
 
 /**
  * Tests that tokens in default values of node fields get replaced correctly.
+ *
+ * @group field_default_token
  */
 class FieldDefaultTokenNodeTest extends FieldDefaultTokenKernelTestBase {
 

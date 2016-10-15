@@ -6,6 +6,8 @@ use Drupal\entity_test\Entity\EntityTest;
 
 /**
  * Tests that tokens in field default values get replaced correctly.
+ *
+ * @group field_default_token
  */
 class FieldDefaultTokenBasicTest extends FieldDefaultTokenKernelTestBase  {
 
