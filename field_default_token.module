@@ -137,19 +137,12 @@ function field_default_token_form_field_config_edit_form_alter(&$form, FormState
       }
     }
 
-    $form['third_party_settings']['field_default_token']['default_value_token'] = [
+    $form['default_value']['default_value_token'] = [
       '#type' => 'textfield',
       '#title' => t('Token for default value'),
-      '#description' => t('If set, this token will be used as the field default value instead of the default value selected above.'),
+      '#description' => t('If set, this token will be used as the field default value instead.'),
       '#maxlength' => 1024,
       '#default_value' => $default_value,
-    ];
-
-    $target_entity_type = \Drupal::entityTypeManager()->getDefinition($field_config->getTargetEntityTypeId());
-    $token_type = $target_entity_type->get('token_type') ?: $target_entity_type->id();
-    $form['third_party_settings']['field_default_token']['token_tree'] = [
-      '#theme' => 'token_tree_link',
-      '#token_types' => [$token_type],
     ];
   }
 
@@ -166,6 +159,14 @@ function field_default_token_form_field_config_edit_form_alter(&$form, FormState
         '#default_value' => $field_config->getThirdPartySetting('field_default_token', 'label_token', FALSE),
       ];
     }
+
+    $target_entity_type = \Drupal::entityTypeManager()->getDefinition($field_config->getTargetEntityTypeId());
+    $token_type = $target_entity_type->get('token_type') ?: $target_entity_type->id();
+    $form['default_value']['token_tree'] = [
+      '#theme' => 'token_tree_link',
+      '#token_types' => [$token_type],
+      '#weight' => 200,
+    ];
   }
 
   // Replace validator to disable validation of strings with tokens
@@ -245,8 +246,8 @@ function field_default_token_modify_field_ui_form(&$element, &$form_state, $cont
  */
 function field_default_token_selection_element_value(&$element, $input, FormStateInterface $form_state) {
   $user_input = $form_state->getUserInput();
-  if (!empty($user_input['third_party_settings']['field_default_token']['default_value_token'])) {
-    $token = $user_input['third_party_settings']['field_default_token']['default_value_token'];
+  if (!empty($user_input['default_value_input']['default_value_token'])) {
+    $token = $user_input['default_value_input']['default_value_token'];
 
     // Disable validation on Field UI forms.
     $element['#after_build'][] = 'field_default_token_remove_validation';
