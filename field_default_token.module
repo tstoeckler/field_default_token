@@ -3,11 +3,17 @@
 /**
  * @file
  * Enables to use tokens as field default values.
+ *
+ * @todo Entity reference integration.
  */
 
 use Drupal\Core\Entity\FieldableEntityInterface;
 use Drupal\Core\Field\FieldDefinitionInterface;
-use Drupal\Core\Utility\Token;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Render\Element;
+use Drupal\Core\Render\Element\Number;
+use Drupal\Core\Render\Element\Select;
+use Drupal\Core\TypedData\OptionsProviderInterface;
 use Drupal\field\FieldConfigInterface;
 
 /**
@@ -44,6 +50,11 @@ function field_default_token_field_config_presave(FieldConfigInterface $field_co
  *   The entity being created.
  * @param \Drupal\Core\Field\FieldDefinitionInterface $definition
  *   The field definition.
+ *
+ * @return array[]
+ *   A numerically indexed array of items, each item being an associative array
+ *   where the keys are the property names and the values the respective
+ *   property values.
  */
 function field_default_token_default_value_callback(FieldableEntityInterface $entity, FieldDefinitionInterface $definition) {
   $entity_type = $entity->getEntityType();
@@ -51,9 +62,10 @@ function field_default_token_default_value_callback(FieldableEntityInterface $en
 
   $data = !$entity->isNew() ? [$token_type => $entity] : [];
 
-  // @todo
-  $token_is_label = (isset($field['settings']['allowed_values']) && (is_array($field['settings']['allowed_values']))
-    && (!empty($instance['default_value_label_token'])));
+  $allowed_values = $definition->getSetting('allowed_values');
+  $token_is_label = $allowed_values
+    && ($definition instanceof FieldConfigInterface)
+    && $definition->getThirdPartySetting('field_default_token', 'label_token', FALSE);
 
   /** @var \Drupal\Core\Utility\Token $token */
   $token = \Drupal::service('token');
@@ -65,9 +77,8 @@ function field_default_token_default_value_callback(FieldableEntityInterface $en
       }
 
       $item[$property_name] = $token->replace($property_value, $data, ['clear' => TRUE]);
-      // @todo
       if ($token_is_label) {
-        $item[$property_name] = array_search($item[$property_name], $field['settings']['allowed_values']);
+        $item[$property_name] = array_search($item[$property_name], $allowed_values);
       }
     }
   }
@@ -75,81 +86,93 @@ function field_default_token_default_value_callback(FieldableEntityInterface $en
 }
 
 /**
- * Implements hook_form_FORM_ID_alter().
+ * Implements hook_form_FORM_ID_alter() for the field configuration edit form.
  */
-function field_default_token_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_id) {
-  $field = $form['#field'];
-  $instance = $form['#instance'];
+function field_default_token_form_field_config_edit_form_alter(&$form, FormStateInterface $form_state) {
+  /** @var \Drupal\Core\Entity\EntityFormInterface $form_object */
+  $form_object = $form_state->getFormObject();
+  // See https://www.drupal.org/node/2818877.
+  /** @var \Drupal\field\FieldConfigInterface|\Drupal\Core\Field\FieldConfigInterface $field_config */
+  $field_config = $form_object->getEntity();
 
-  if (!isset($form['instance']['default_value_widget'])) {
-    if ((field_behaviors_widget('default value', $instance) == FIELD_BEHAVIOR_DEFAULT)
-        && (!empty($instance['default_value_function']))
-        && ($instance['default_value_function'] === 'field_default_token_default_value_function')) {
-      // Read default value widget hidden by core.
-      $form['instance']['default_value_widget'] = field_ui_default_value_widget($field, $instance, $form, $form_state);
+  // \Drupal\Core\Field\FieldItemList::defaultValuesForm() does not display a
+  // default value form if there is a default value callback. In case the
+  // default value callback is 'field_default_token_default_value_callback'
+  // we display the default value form as if there were no callback.
+  if (!isset($form['default_value']) && $field_config->getDefaultValueCallback() === 'field_default_token_default_value_callback') {
+    // See \Drupal\field_ui\Form\FieldConfigEditForm::form()
+    /** @var \Drupal\Core\Entity\FieldableEntityInterface $entity */
+    $entity = $form['#entity'];
+    $items = $entity->get($field_config->getName());
+
+    $items->getFieldDefinition()->setDefaultValueCallback(NULL);
+    if ($element = $items->defaultValuesForm($form, $form_state)) {
+      $element = array_merge($element, [
+        '#type' => 'details',
+        '#title' => t('Default value'),
+        '#open' => TRUE,
+        '#tree' => TRUE,
+        '#description' => t('The default value for this field, used when creating new content.'),
+      ]);
+
+      $form['default_value'] = $element;
     }
+    $items->getFieldDefinition()->setDefaultValueCallback('field_default_token_default_value_function');
   }
 
-  $options_widgets = array('options_select', 'options_buttons', 'options_onoff');
-
-  if ((isset($instance['widget']['type'])) && (in_array($instance['widget']['type'], $options_widgets))) {
+  /** @var \Drupal\Core\Field\FieldTypePluginManagerInterface $field_type_plugin_manager */
+  $field_type_plugin_manager = \Drupal::service('plugin.manager.field.field_type');
+  $field_type = $field_type_plugin_manager->getDefinition($field_config->getType());
+  if (is_subclass_of($field_type['class'], OptionsProviderInterface::class)) {
     $default_value = '';
+    foreach ($field_config->getDefaultValueLiteral() as $item) {
+      foreach ($item as $value) {
+        if (is_array($value)) {
+          continue;
+        }
 
-    if (!empty($instance['default_value'])) {
-      foreach ($instance['default_value'] as $values) {
-        foreach ($values as $value) {
-          if (strpos($value, '[') !== FALSE) {
-            $default_value = $value;
-          }
+        if (strpos($value, '[') !== FALSE) {
+          $default_value = $value;
         }
       }
     }
 
-    $form['instance']['default_value_widget']['default_value_token'] = array(
+    $form['third_party_settings']['field_default_token']['default_value_token'] = [
       '#type' => 'textfield',
       '#title' => t('Token for default value'),
-      '#description' => t('If set, this token will be used as the field default value instead.'),
+      '#description' => t('If set, this token will be used as the field default value instead of the default value selected above.'),
       '#maxlength' => 1024,
       '#default_value' => $default_value,
-      '#weight' => 100,
-    );
+    ];
+
+    $target_entity_type = \Drupal::entityTypeManager()->getDefinition($field_config->getTargetEntityTypeId());
+    $token_type = $target_entity_type->get('token_type') ?: $target_entity_type->id();
+    $form['third_party_settings']['field_default_token']['token_tree'] = [
+      '#theme' => 'token_tree_link',
+      '#token_types' => [$token_type],
+    ];
   }
 
-  if (isset($form['instance']['default_value_widget'])) {
-    field_default_token_enlarge_max_length($form['instance']['default_value_widget']);
-    field_default_token_fix_number_validation($form['instance']['default_value_widget']);
+  if (isset($form['default_value'])) {
+    field_default_token_enlarge_max_length($form['default_value']);
+    field_default_token_fix_number_validation($form['default_value']);
 
     // Allow tokens to be field value labels, not just field values.
-    if ((isset($field['settings']['allowed_values'])) && (is_array($field['settings']['allowed_values']))) {
-      $form['instance']['default_value_label_token'] = array(
+    if ($field_config->getSetting('allowed_values')) {
+      $form['third_party_settings']['field_default_token']['label_token'] = [
         '#type' => 'checkbox',
         '#title' => t('Token for default value contains field value label, not stored key'),
         '#description' => t('If checked, token value must be field value label from allowed values list of key|label pairs.'),
-        '#default_value' => isset($instance['default_value_label_token']) ? $instance['default_value_label_token'] : FALSE,
-        '#weight' => 150,
-      );
+        '#default_value' => $field_config->getThirdPartySetting('field_default_token', 'label_token', FALSE),
+      ];
     }
-
-    $entity_type = $form['#instance']['entity_type'];
-    $token_type = $entity_type;
-    $entity_info = entity_get_info($entity_type);
-    if (isset($entity_info['token type'])) {
-      $token_type = $entity_info['token type'];
-    }
-
-    $form['instance']['default_value_widget']['token_tree'] = array(
-      '#theme' => 'token_tree',
-      '#token_types' => array($token_type),
-      '#dialog' => TRUE,
-      '#weight' => 200,
-    );
   }
 
   // Replace validator to disable validation of strings with tokens
   // in Field UI forms.
   foreach ($form['#validate'] as &$validator) {
-    if ($validator == 'field_ui_field_edit_form_validate') {
-      $validator = 'field_default_token_field_ui_field_edit_form_validate';
+    if ($validator == '::validateForm') {
+      $validator = 'field_default_token_field_config_edit_form_validate';
     }
   }
 }
@@ -167,7 +190,7 @@ function field_default_token_enlarge_max_length(&$element) {
       $element['#maxlength'] = 1024;
     }
   }
-  foreach (element_children($element) as $key) {
+  foreach (Element::children($element) as $key) {
     if (isset($element[$key]) && $element[$key]) {
       field_default_token_enlarge_max_length($element[$key]);
     }
@@ -183,12 +206,12 @@ function field_default_token_enlarge_max_length(&$element) {
 function field_default_token_fix_number_validation(&$element) {
   if (!empty($element['#element_validate'])) {
     foreach ($element['#element_validate'] as &$callback) {
-      if ($callback === 'number_field_widget_validate') {
-        $callback = 'field_default_token_number_field_widget_validate';
+      if ($callback === [Number::class, 'validateNumber']) {
+        $callback = 'field_default_token_number_validate';
       }
     }
   }
-  foreach (element_children($element) as $key) {
+  foreach (Element::children($element) as $key) {
     if (isset($element[$key]) && $element[$key]) {
       field_default_token_fix_number_validation($element[$key]);
     }
@@ -196,22 +219,11 @@ function field_default_token_fix_number_validation(&$element) {
 }
 
 /**
- * Implements hook_ctools_plugin_directory().
- */
-function field_default_token_ctools_plugin_directory($module, $plugin) {
-  if ($module == 'entityreference') {
-    return 'plugins/' . $plugin;
-  }
-}
-
-/**
  * Implements hook_field_widget_form_alter().
  */
-function field_default_token_field_widget_form_alter(&$element, &$form_state, $context) {
-  if (!empty($element['#entity_type'])) {
-    if (empty($element['#entity'])) {
-      field_default_token_modify_field_ui_form($element, $form_state, $context);
-    }
+function field_default_token_field_widget_form_alter(&$element, FormStateInterface $form_state, $context) {
+  if ($context['default']) {
+    field_default_token_modify_field_ui_form($element, $form_state, $context);
   }
 }
 
@@ -231,23 +243,24 @@ function field_default_token_modify_field_ui_form(&$element, &$form_state, $cont
  * Replacement for form_type_select_value() functions
  * for selectors, checkboxes, radio buttons (Field UI forms only).
  */
-function field_default_token_selection_element_value(&$element, $input, $form_state) {
-  if (!empty($form_state['input']['default_value_token'])) {
+function field_default_token_selection_element_value(&$element, $input, FormStateInterface $form_state) {
+  $user_input = $form_state->getUserInput();
+  if (!empty($user_input['third_party_settings']['field_default_token']['default_value_token'])) {
+    $token = $user_input['third_party_settings']['field_default_token']['default_value_token'];
+
     // Disable validation on Field UI forms.
     $element['#after_build'][] = 'field_default_token_remove_validation';
-    $token = $form_state['input']['default_value_token'];
 
     if ($input !== FALSE) {
       if (isset($element['#multiple']) && $element['#multiple']) {
-        $input = array($token);
+        $input = [$token];
       }
       else {
         $input = $token;
       }
     }
   }
-
-  return form_type_select_value($element, $input);
+  return Select::valueCallback($element, $input, $form_state);
 }
 
 /**
@@ -256,58 +269,44 @@ function field_default_token_selection_element_value(&$element, $input, $form_st
  * Disables field validation on Field UI forms
  * for selectors, checkboxes and radio buttons.
  */
-function field_default_token_remove_validation(&$element, &$form_state) {
+function field_default_token_remove_validation($element, FormStateInterface $form_state) {
   unset($element['#needs_validation']);
   return $element;
 }
 
 /**
- * Form validation handler for field_ui_field_edit_form.
+ * Form validation handler for the field configuration edit form.
  *
- * Replacement for field_ui_field_edit_form_validate().
+ * Replacement for \Drupal\field_ui\Form\FieldConfigEditForm::validateForm().
  */
-function field_default_token_field_ui_field_edit_form_validate($form, &$form_state) {
-  // Take the incoming values as the $instance definition, so that the 'default
-  // value' gets validated using the instance settings being submitted.
-  $instance = $form_state['values']['instance'];
-  $field_name = $instance['field_name'];
+function field_default_token_field_config_edit_form_validate($form, FormStateInterface $form_state) {
+  // See \Drupal\field_ui\Form\FieldConfigEditForm::validateForm().
+  if (isset($form['default_value']) && ($widget = $form_state->get('default_value_widget'))) {
+    /** @var \Drupal\Core\Entity\FieldableEntityInterface $entity */
+    $entity = $form['#entity'];
+    /** @var \Drupal\Core\Entity\EntityFormInterface $form_object */
+    $form_object = $form_state->getFormObject();
+    /** @var \Drupal\field\FieldConfigInterface $field_config */
+    $field_config = $form_object->getEntity();
+    $items = $entity->get($field_config->getName());
 
-  if (isset($form['instance']['default_value_widget'])) {
-    $element = $form['instance']['default_value_widget'];
-
-    $field_state = field_form_get_state($element['#parents'], $field_name, LANGUAGE_NONE, $form_state);
-    $field = $field_state['field'];
-
-    // Extract the 'default value'.
-    $items = array();
-    field_default_extract_form_values(NULL, NULL, $field, $instance, LANGUAGE_NONE, $items, $element, $form_state);
-
+    $widget->extractFormValues($items, $form['default_value'], $form_state);
     foreach ($items as $item) {
-      if (is_array($item)) {
-        foreach ($item as $value) {
-          if (is_scalar($value)) {
-            if (strpos($value, '[') !== FALSE) {
-              // Token in default value, do not validate.
-              return;
-            }
-          }
+      /** @var \Drupal\Core\TypedData\TypedDataInterface $property */
+      foreach ($item as $property) {
+        $value = $property->getValue();
+        if (is_array($value)) {
+          continue;
+        }
+
+        if (strpos($value, '[') !== FALSE) {
+          // Token in default value, do not validate.
+          return;
         }
       }
     }
 
-    // Validate the value and report errors.
-    $errors = array();
-    $function = $field['module'] . '_field_validate';
-    if (function_exists($function)) {
-      $function(NULL, NULL, $field, $instance, LANGUAGE_NONE, $items, $errors);
-    }
-    if (isset($errors[$field_name][LANGUAGE_NONE])) {
-      // Store reported errors in $form_state.
-      $field_state['errors'] = $errors[$field_name][LANGUAGE_NONE];
-      field_form_set_state($element['#parents'], $field_name, LANGUAGE_NONE, $form_state, $field_state);
-      // Assign reported errors to the correct form element.
-      field_default_form_errors(NULL, NULL, $field, $instance, LANGUAGE_NONE, $items, $element, $form_state);
-    }
+    $items->defaultValuesFormValidate($form['default_value'], $form, $form_state);
   }
 }
 
@@ -316,11 +315,11 @@ function field_default_token_field_ui_field_edit_form_validate($form, &$form_sta
  *
  * Replacement for number_field_widget_validate().
  */
-function field_default_token_number_field_widget_validate($element, &$form_state) {
+function field_default_token_number_validate(&$element, FormStateInterface $form_state, &$complete_form) {
   $value = $element['#value'];
   if (strpos($value, '[') !== FALSE) {
     // Token in default value, do not validate.
     return;
   }
-  number_field_widget_validate($element, $form_state);
+  Number::validateNumber($element, $form_state, $complete_form);
 }
