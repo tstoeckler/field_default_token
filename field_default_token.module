@@ -105,7 +105,28 @@ function field_default_token_form_field_config_edit_form_alter(&$form, FormState
     $entity = $form['#entity'];
     $items = $entity->get($field_config->getName());
 
-    $items->getFieldDefinition()->setDefaultValueCallback(NULL);
+    // The entity has been populated with the default field value with any
+    // tokens replaced. Thus, we need to explicitly set the default value
+    // literal as the field default value for it to show up in the default value
+    // form appropriately.
+    /** @var \Drupal\Core\Field\FieldConfigInterface $field_definition */
+    $field_definition = $items->getFieldDefinition();
+    $default_value_literal = $field_definition->getDefaultValueLiteral();
+    if ($items->isEmpty()) {
+      $items->setValue($default_value_literal);
+    }
+    else {
+      $default_value = $field_definition->getDefaultValue($entity);
+      foreach ($items as $delta => $item) {
+        if (isset($default_value[$delta]) && $default_value_literal[$delta] && ($item->getValue() === $default_value[$delta])) {
+          $item->setValue($default_value_literal[$delta]);
+        }
+      }
+    }
+
+    // Temporarily disable the default value callback so that the default values
+    // form is displayed.
+    $field_definition->setDefaultValueCallback(NULL);
     if ($element = $items->defaultValuesForm($form, $form_state)) {
       $element = array_merge($element, [
         '#type' => 'details',
@@ -117,7 +138,7 @@ function field_default_token_form_field_config_edit_form_alter(&$form, FormState
 
       $form['default_value'] = $element;
     }
-    $items->getFieldDefinition()->setDefaultValueCallback('field_default_token_default_value_function');
+    $field_definition->setDefaultValueCallback('field_default_token_default_value_function');
   }
 
   /** @var \Drupal\Core\Field\FieldTypePluginManagerInterface $field_type_plugin_manager */
